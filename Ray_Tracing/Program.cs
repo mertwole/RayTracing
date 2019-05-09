@@ -4,9 +4,6 @@ using OpenTK.Input;
 using OpenTK.Graphics;
 using OpenTK.Graphics.OpenGL4;
 using System.IO;
-using System.Drawing;
-using System.Drawing.Imaging;
-using PixelFormat = OpenTK.Graphics.OpenGL4.PixelFormat;
 
 namespace Lighting_Test
 {
@@ -85,7 +82,7 @@ namespace Lighting_Test
             GL.DispatchCompute(window_width / workgroup_size, window_height / workgroup_size, 1);
             GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
             
-            /*
+            /*save render to bitmap
             Bitmap bmp = new Bitmap(window_width, window_height);
             BitmapData data =
                 bmp.LockBits(new Rectangle(0, 0, window_width, window_height), ImageLockMode.WriteOnly,
