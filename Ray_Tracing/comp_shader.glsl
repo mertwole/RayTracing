@@ -184,25 +184,22 @@ Raytrace_result TraceWithTriangle(Ray ray, Triangle triangle)
 //*********************primitives*******************************
 
 #define SPHERES_COUNT 3
-#define PLANES_COUNT 0
+#define PLANES_COUNT 6
 #define TRIANGLES_COUNT 0
 
 #if (SPHERES_COUNT != 0)
 Sphere[SPHERES_COUNT] spheres = 
 {//center radius material_id
-	{dvec3(-2.2, 0, -3), 1, 0},
-	{dvec3(0, 0, -3), 1, 1},
-	{dvec3(2.2, 0, -3), 1, 2},
-	//{dvec3(0, 5003.1, -3), 5000, 4},
-	//{dvec3(50004, 0, -3), 50000, 4},
-	//{dvec3(-5004, 0, -3), 5000, 4}
+	{dvec3(-5, -1, -5), 3, 0},
+	{dvec3(3, 4, -3), 1, 1},
+	{dvec3(2.5, -1, -3), 1, 2},
 };
 #endif
 
 #if PLANES_COUNT != 0
 Plane[PLANES_COUNT] planes = 
 {//normal point material_id
-	//{normalize(dvec3(0, 1, 0)), dvec3(0, -1, 0), 3},//bottom
+	{normalize(dvec3(0, 1, 0)), dvec3(0, -1, 0), 4},//bottom
 	{normalize(dvec3(0, 1, 0)), dvec3(0, 7, 0), 4},//top
 
 	{normalize(dvec3(-1, 0, 0)), dvec3(5, 0, 0), 5},//right
@@ -227,17 +224,21 @@ struct Material
 	double reflection;
 	dvec3 color;
 	double shininess;
+
+	double ambient;
+	double diffuse;
+	double specular;
 };
 
 Material[7] materials = 
 {
-	{0.1, dvec3(1, 1, 1), 32},
-	{0.15, dvec3(0.1, 0.1, 1), 256},
-	{0.1, dvec3(1, 1, 1), 32},
-	{0.1, dvec3(0, 0.5, 0), 32},
-	{0, dvec3(0.5, 0.5, 0.5), 0},
-	{0, dvec3(0.5, 0.2, 0.2), 32},
-	{0, dvec3(0.5, 0.1, 0.1), 32}
+	{0.1, dvec3(1, 0.1, 0.1), 32,1, 1, 1},
+	{0.4, dvec3(0.5, 0.5, 0.5), 256,1, 1, 1},
+	{0.01, dvec3(0.1, 1, 0.1), 32, 1, 1, 0.3},
+	{0.1, dvec3(0, 1, 0), 32, 1, 1, 1},
+	{0.05, dvec3(0.5, 0.5, 0.5), 32, 1, 1, 0},
+	{0.07, dvec3(0.5, 0.2, 0.2), 32, 1, 1, 1},
+	{0.6, dvec3(0.15, 0.15, 0.15), 32, 1, 1, 0.3}
 };
 //*************************lighting***************************
 dvec3 ambient = dvec3(0.4);
@@ -265,12 +266,12 @@ struct Point_light
 };
 
 #define DIRECTIONAL_LIGHTS_COUNT 0
-#define POINT_LIGHTS_COUNT 1
+#define POINT_LIGHTS_COUNT 2
 
 #if DIRECTIONAL_LIGHTS_COUNT != 0
 Directional_light[DIRECTIONAL_LIGHTS_COUNT] directional_lights = 
 {
-	{normalize(dvec3(0, -10, 0)), dvec3(0), dvec3(0)}
+	{normalize(dvec3(0, -1, 0)), dvec3(4), dvec3(0.1)}
 };
 #endif
 
@@ -278,16 +279,17 @@ Directional_light[DIRECTIONAL_LIGHTS_COUNT] directional_lights =
 Point_light[POINT_LIGHTS_COUNT] point_lights = 
 {
 	//{dvec3(-3.99, 2, -3), dvec3(2, 0, 0), dvec3(0.5, 0, 0), 1, 0.2, 0.02},
-	{dvec3(0, 4.9, -3), dvec3(4), dvec3(0, 0.5, 0), 1, 0.2, 0.02}
+	{dvec3(0, 1, -3), dvec3(3), dvec3(0.5), 1, 0.02, 0.01},
+	{dvec3(0, 4.9, -3), dvec3(3), dvec3(0.5), 1, 0.02, 0.01}
 };
 #endif
 
 //************************camera******************************
-dvec3 view_point = dvec3(0, 0, 3);
-double view_distance = 0.7;
-float pitch = 0;//x
-float yaw = 0;//y
-dvec2 viewport = dvec2(1.5, 1.5);
+dvec3 view_point = dvec3(4, 4, 3);
+double view_distance = 0.3;
+float pitch = (3.14 / 180) * -25;//x
+float yaw = (3.14 / 180) * 50;//y
+dvec2 viewport = dvec2(0.64, 0.36);
 
 uniform vec2 resolution;
 //************************************************************
@@ -430,6 +432,10 @@ dvec3 GetLightFromContact(Raytrace_result result)
 	}
 	#endif
 	//***************************************************
+
+	diffuse *= material.diffuse;
+	specular *= material.specular;
+	ambient *= material.ambient;
 
 	dvec3 color = (ambient + ((diffuse + specular) / 2) / (POINT_LIGHTS_COUNT + DIRECTIONAL_LIGHTS_COUNT) ) * material.color;
 

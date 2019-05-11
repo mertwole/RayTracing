@@ -19,8 +19,8 @@ namespace Lighting_Test
             game.Run();
         }
 
-        static int window_width = 500;
-        static int window_height = 500;
+        static int window_width = 800;
+        static int window_height = 450;
         const int workgroup_size = 10;//max 32
         
         public Game() : base(window_width, window_height, GraphicsMode.Default, "RayTracing")
