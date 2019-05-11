@@ -4,6 +4,9 @@ using OpenTK.Input;
 using OpenTK.Graphics;
 using OpenTK.Graphics.OpenGL4;
 using System.IO;
+using System.Drawing;
+using System.Drawing.Imaging;
+using PixelFormat = OpenTK.Graphics.OpenGL4.PixelFormat;
 
 namespace Lighting_Test
 {
@@ -16,8 +19,8 @@ namespace Lighting_Test
             game.Run();
         }
 
-        static int window_width = 600;
-        static int window_height = 600;
+        static int window_width = 500;
+        static int window_height = 500;
         const int workgroup_size = 10;//max 32
         
         public Game() : base(window_width, window_height, GraphicsMode.Default, "RayTracing")
@@ -80,21 +83,7 @@ namespace Lighting_Test
             GL.Uniform2(GL.GetUniformLocation(compute_shader, "resolution"), new Vector2(window_width, window_height));
 
             GL.DispatchCompute(window_width / workgroup_size, window_height / workgroup_size, 1);
-            GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
-            
-            /*save render to bitmap
-            Bitmap bmp = new Bitmap(window_width, window_height);
-            BitmapData data =
-                bmp.LockBits(new Rectangle(0, 0, window_width, window_height), ImageLockMode.WriteOnly,
-                System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            GL.GetTexImage(TextureTarget.Texture2D, 0, PixelFormat.Rgb, PixelType.UnsignedByte, data.Scan0);
-            bmp.UnlockBits(data);
-
-            bmp.RotateFlip(RotateFlipType.RotateNoneFlipY);
-            bmp.Save("1.bmp", ImageFormat.Bmp);
-
-            Console.WriteLine("Bitmap generated");
-            */
+            //GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
         }
 
         protected override void OnRenderFrame(FrameEventArgs E)
@@ -106,9 +95,8 @@ namespace Lighting_Test
 
             GL.BindVertexArray(VAO);
             {
-                GL.BindTexture(TextureTarget.Texture2D, texture);
-
                 GL.UseProgram(render_shader);
+
                 GL.DrawArrays(PrimitiveType.Quads, 0, 4);
             }
             GL.BindVertexArray(0);
@@ -122,6 +110,21 @@ namespace Lighting_Test
 
             if (e.Key == Key.Escape)
                 Environment.Exit(1);
+
+            if(e.Key == Key.S)
+            {
+                //save render to bitmap
+                Bitmap bmp = new Bitmap(window_width, window_height);
+                BitmapData data =
+                    bmp.LockBits(new Rectangle(0, 0, window_width, window_height), ImageLockMode.WriteOnly,
+                    System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                GL.GetTexImage(TextureTarget.Texture2D, 0, PixelFormat.Rgb, PixelType.UnsignedByte, data.Scan0);
+                bmp.UnlockBits(data);
+
+                bmp.RotateFlip(RotateFlipType.RotateNoneFlipY);
+                bmp.Save("1.bmp", ImageFormat.Bmp);
+                Console.WriteLine("saved");
+            }
         }
     }
 }

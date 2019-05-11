@@ -1,16 +1,150 @@
-#version 430 core
+#version 430 core		
 layout( local_size_x = 10, local_size_y = 10) in;
 
 layout (binding = 0, rgba8) uniform image2D Texture;
 
-#define ZERO 0.0001
-#define INFINITY 1000000000
+uniform vec2 resolution;
+
+#define ZERO 0.00001
+#define INFINITY 100000
 
 bool EqualsZero(double a)
 {
 	return ((a > -ZERO) && (a < ZERO));
 }
+//***************primitives*******************************
+struct Sphere
+{
+	dvec3 center;
+	double radius;
 
+	int material_id;
+};
+
+struct Triangle
+{
+	dvec3[3] vertices;
+	dvec3 normal;
+
+	int material_id;
+};
+
+struct Plane
+{
+	dvec3 normal;
+	dvec3 point;
+
+	int material_id;
+};
+//************************************************************
+#define SPHERES_COUNT 2
+#define PLANES_COUNT 0
+#define TRIANGLES_COUNT 0
+
+#if (SPHERES_COUNT != 0)
+Sphere[SPHERES_COUNT] spheres = 
+{//center radius material_id
+	//{dvec3(-2.2, 0, -3), 1, 0},
+	{dvec3(-2, 0, -3), 1, 1},
+	{dvec3(2, 0, -3), 1, 2},
+};
+#endif
+
+#if PLANES_COUNT != 0
+Plane[PLANES_COUNT] planes = 
+{//normal point material_id
+	{normalize(dvec3(0, 1, 0)), dvec3(0, -1, 0), 3},//bottom
+	//{normalize(dvec3(0, 1, 0)), dvec3(0, 7, 0), 4},//top
+
+	//{normalize(dvec3(-1, 0, 0)), dvec3(5, 0, 0), 5},//right
+	//{normalize(dvec3(1, 0, 0)), dvec3(-5, 0, 0), 6},//left
+
+	//{normalize(dvec3(0, 0, 1)), dvec3(0, 0, -5), 4},//back
+	//{normalize(dvec3(0, 0, 1)), dvec3(0, 0, 4), 4}//front
+};
+#endif
+
+#if TRIANGLES_COUNT != 0
+Triangle[TRIANGLES_COUNT] triangles =
+{//vec3[3] vertices material_id
+	{{vec3(-5, -1, -5), vec3(5, -1, -5), vec3(0, -1, 1)}, 1}
+};
+#endif
+//************************************************************
+struct Material
+{
+	double reflection;
+	dvec3 color;
+	double shininess;
+
+	double diffuse_strength;
+	double specular_strength;
+
+	double refraction;
+	double transparency;
+};
+
+Material[7] materials = 
+{
+	{0, dvec3(1, 1, 1), 32, 1, 1, 0, 0},
+	{0, dvec3(0.1, 0.1, 1), 256, 1, 1, 0, 0},//water?
+	{0, dvec3(1, 1, 1), 32, 1, 1, 0, 0},
+	{0, dvec3(0, 0.5, 0), 32, 1, 1, 0, 0},
+	{0, dvec3(0.5, 0.5, 0.5), 0, 1, 1, 0, 0},
+	{0, dvec3(0.5, 0.2, 0.2), 32, 1, 1, 0, 0},
+	{0, dvec3(0.5, 0.1, 0.1), 32, 1, 1, 0, 0}
+};
+
+double air_refraction = 1;
+
+#define REFRACTION_DEPTH 5
+//************************************************************
+
+dvec3 view_point = dvec3(0, 0, 3);
+double view_distance = 0.7;
+float pitch = 0;//x
+float yaw = 0;//y
+dvec2 viewport = dvec2(1.5, 1.5);
+
+//*************************lighting***************************
+dvec3 ambient = dvec3(0.4);
+
+#define REFLECTION_DEPTH 30
+
+struct Directional_light
+{
+	dvec3 direction;
+
+	dvec3 diffuse_color;
+	dvec3 specular_color;
+};
+
+struct Point_light
+{
+	dvec3 position;
+
+	dvec3 diffuse_color;
+	dvec3 specular_color;
+
+	float constant;
+	float linear;
+	float quadratic;
+};
+
+#define DIRECTIONAL_LIGHTS_COUNT 1
+#define POINT_LIGHTS_COUNT 1
+
+Directional_light[DIRECTIONAL_LIGHTS_COUNT] directional_lights = 
+{
+	{normalize(dvec3(0, -10, 0)), dvec3(0), dvec3(0)}
+};
+
+Point_light[POINT_LIGHTS_COUNT] point_lights = 
+{
+	//{dvec3(-3.99, 2, -3), dvec3(2, 0, 0), dvec3(0.5, 0, 0), 1, 0.2, 0.02},
+	{dvec3(0, 4.9, -3), dvec3(3), dvec3(0.5), 1, 0.2, 0.02}
+};
+//************************************************************
 struct Ray
 {
 	dvec3 source;
@@ -26,35 +160,11 @@ struct Raytrace_result
 	dvec3 contact;
 	dvec3 normal;
 	double t;
+	bool normal_facing_front;
 
 	int material_id;
 };
-
-struct Sphere
-{
-	dvec3 center;
-	double radius;
-
-	int material_id;
-};
-
-struct Triangle
-{
-	dvec3[3] vertices;
-
-	int material_id;
-};
-
-struct Plane
-{
-	dvec3 normal;
-	dvec3 point;
-
-	int material_id;
-};
-
 //************************************************************
-
 Raytrace_result TraceWithSphere(Ray ray, Sphere sphere)
 {
 	Raytrace_result result;
@@ -82,10 +192,14 @@ Raytrace_result TraceWithSphere(Ray ray, Sphere sphere)
 	if(t2 >= ray.min_value && t2 <= ray.max_value)
 	{
 		result.t = t2;
+		result.normal = (result.contact - sphere.center) / sphere.radius;
+		result.normal_facing_front = true;
 	}
 	else if(t1 >= ray.min_value && t1 <= ray.max_value)
 	{
 		result.t = t1;
+		result.normal = -(result.contact - sphere.center) / sphere.radius;
+		result.normal_facing_front = false;
 	}
 	else
 	{
@@ -94,7 +208,6 @@ Raytrace_result TraceWithSphere(Ray ray, Sphere sphere)
 	}
 	
 	result.contact = result.t * ray.direction + ray.source;
-	result.normal = (result.contact - sphere.center) / sphere.radius;
 	result.intersection = true;
 
 	return result;
@@ -133,19 +246,22 @@ Raytrace_result TraceWithPlane(Ray ray, Plane plane)
 	result.contact = ray.source + ray.direction * t;	
 	result.normal = plane.normal;
 	result.t = t;
+	result.normal_facing_front = true;
 
 	if(dot(plane.normal, -ray.direction) < 0)//get normal facing to source
+	{
 		result.normal *= -1;
+		result.normal_facing_front = false;
+	}
 
 	return result;
 }
- 
+
 Raytrace_result TraceWithTriangle(Ray ray, Triangle triangle)
 {
 	Raytrace_result result;
 
-	dvec3 normal = normalize(cross(triangle.vertices[0] - triangle.vertices[1], triangle.vertices[0] - triangle.vertices[2]));
-	Plane triangle_plane = {normal, triangle.vertices[0], 0};
+	Plane triangle_plane = {triangle.normal, triangle.vertices[0], 0};
 	result = TraceWithPlane(ray, triangle_plane);
 
 	if(!result.intersection)
@@ -161,7 +277,7 @@ Raytrace_result TraceWithTriangle(Ray ray, Triangle triangle)
 		if(k > 2) k = 0;//third vertex
 
 		//determine plane P that is parallel to triangle normal & contains JK
-		dvec3 P_normal = normalize(cross(triangle.vertices[j] - triangle.vertices[k], triangle_plane.normal));
+		dvec3 P_normal = normalize(cross(triangle.vertices[j] - triangle.vertices[k], result.normal));
 		//plane equality is P_normal.x * X + P_normal.y * Y + P_normal.z * Z + d = 0
 		double d = -dot(P_normal, triangle.vertices[j]);
 
@@ -180,116 +296,6 @@ Raytrace_result TraceWithTriangle(Ray ray, Triangle triangle)
 
 	return result;
 }
-
-//*********************primitives*******************************
-
-#define SPHERES_COUNT 3
-#define PLANES_COUNT 0
-#define TRIANGLES_COUNT 0
-
-#if (SPHERES_COUNT != 0)
-Sphere[SPHERES_COUNT] spheres = 
-{//center radius material_id
-	{dvec3(-2.2, 0, -3), 1, 0},
-	{dvec3(0, 0, -3), 1, 1},
-	{dvec3(2.2, 0, -3), 1, 2},
-	//{dvec3(0, 5003.1, -3), 5000, 4},
-	//{dvec3(50004, 0, -3), 50000, 4},
-	//{dvec3(-5004, 0, -3), 5000, 4}
-};
-#endif
-
-#if PLANES_COUNT != 0
-Plane[PLANES_COUNT] planes = 
-{//normal point material_id
-	//{normalize(dvec3(0, 1, 0)), dvec3(0, -1, 0), 3},//bottom
-	{normalize(dvec3(0, 1, 0)), dvec3(0, 7, 0), 4},//top
-
-	{normalize(dvec3(-1, 0, 0)), dvec3(5, 0, 0), 5},//right
-	{normalize(dvec3(1, 0, 0)), dvec3(-5, 0, 0), 6},//left
-
-	{normalize(dvec3(0, 0, 1)), dvec3(0, 0, -5), 4},//back
-	{normalize(dvec3(0, 0, 1)), dvec3(0, 0, 4), 4}//front
-};
-#endif
-
-#if TRIANGLES_COUNT != 0
-Triangle[TRIANGLES_COUNT] triangles =
-{//vec3[3] vertices material_id
-	{{vec3(-5, -1, -5), vec3(5, -1, -5), vec3(0, -1, 1)}, 1}
-};
-#endif
-
-//*****************materials**********************************
-
-struct Material
-{
-	double reflection;
-	dvec3 color;
-	double shininess;
-};
-
-Material[7] materials = 
-{
-	{0.1, dvec3(1, 1, 1), 32},
-	{0.15, dvec3(0.1, 0.1, 1), 256},
-	{0.1, dvec3(1, 1, 1), 32},
-	{0.1, dvec3(0, 0.5, 0), 32},
-	{0, dvec3(0.5, 0.5, 0.5), 0},
-	{0, dvec3(0.5, 0.2, 0.2), 32},
-	{0, dvec3(0.5, 0.1, 0.1), 32}
-};
-//*************************lighting***************************
-dvec3 ambient = dvec3(0.4);
-
-#define REFLECTION_DEPTH 5
-
-struct Directional_light
-{
-	dvec3 direction;
-
-	dvec3 diffuse_color;
-	dvec3 specular_color;
-};
-
-struct Point_light
-{
-	dvec3 position;
-
-	dvec3 diffuse_color;
-	dvec3 specular_color;
-
-	float constant;
-	float linear;
-	float quadratic;
-};
-
-#define DIRECTIONAL_LIGHTS_COUNT 0
-#define POINT_LIGHTS_COUNT 1
-
-#if DIRECTIONAL_LIGHTS_COUNT != 0
-Directional_light[DIRECTIONAL_LIGHTS_COUNT] directional_lights = 
-{
-	{normalize(dvec3(0, -10, 0)), dvec3(0), dvec3(0)}
-};
-#endif
-
-#if POINT_LIGHTS_COUNT != 0
-Point_light[POINT_LIGHTS_COUNT] point_lights = 
-{
-	//{dvec3(-3.99, 2, -3), dvec3(2, 0, 0), dvec3(0.5, 0, 0), 1, 0.2, 0.02},
-	{dvec3(0, 4.9, -3), dvec3(4), dvec3(0, 0.5, 0), 1, 0.2, 0.02}
-};
-#endif
-
-//************************camera******************************
-dvec3 view_point = dvec3(0, 0, 3);
-double view_distance = 0.7;
-float pitch = 0;//x
-float yaw = 0;//y
-dvec2 viewport = dvec2(1.5, 1.5);
-
-uniform vec2 resolution;
 //************************************************************
 
 bool RayIntersectsAnything(Ray ray)
@@ -363,7 +369,7 @@ Raytrace_result TraceRay(Ray ray)
 	#endif
 
 	#if TRIANGLES_COUNT != 0
-	for(int i = 0; i < TRIANGLES_COUNT; i++)//find plane with min t
+	for(int i = 0; i < TRIANGLES_COUNT; i++)//find triangle with min t
 	{
 		Raytrace_result res = TraceWithTriangle(ray, triangles[i]);
 
@@ -379,8 +385,6 @@ Raytrace_result TraceRay(Ray ray)
 	return result;
 }
 
-//************************************************************
-
 dvec3 GetLightFromContact(Raytrace_result result)
 {	
 	if(!result.intersection)
@@ -393,7 +397,6 @@ dvec3 GetLightFromContact(Raytrace_result result)
 
 	dvec3 observer_vector = normalize(view_point - result.contact);//from contact to view point
 	//***************directional***********************
-	#if DIRECTIONAL_LIGHTS_COUNT != 0
 	for(int i = 0; i < DIRECTIONAL_LIGHTS_COUNT; i++)
 	{		
 		dvec3 light_vector = -directional_lights[i].direction;//from contact to light source
@@ -407,9 +410,7 @@ dvec3 GetLightFromContact(Raytrace_result result)
 			specular += pow(float(max(dot(reflect(observer_vector, result.normal), -light_vector), 0)) , float(material.shininess)) * directional_lights[i].specular_color;
 		}
 	}
-	#endif
 	//***********************point**********************
-	#if POINT_LIGHTS_COUNT != 0
 	for(int i = 0; i < POINT_LIGHTS_COUNT; i++)
 	{		
 		dvec3 light_vector = normalize(point_lights[i].position - result.contact);//from contact to light source
@@ -428,8 +429,10 @@ dvec3 GetLightFromContact(Raytrace_result result)
 			* point_lights[i].specular_color * distance_influence;
 		}
 	}
-	#endif
 	//***************************************************
+
+	diffuse *= material.diffuse_strength;
+	specular *= material.specular_strength;
 
 	dvec3 color = (ambient + ((diffuse + specular) / 2) / (POINT_LIGHTS_COUNT + DIRECTIONAL_LIGHTS_COUNT) ) * material.color;
 
@@ -470,10 +473,47 @@ dvec3 GetColor(Ray current_ray)
 	return color;
 }
 
-//************************************************************
+dvec3 GetColor_Refracted(Ray current_ray)
+{
+	Ray ray = current_ray;
+
+	dvec3[REFRACTION_DEPTH] self_colors;
+	double[REFRACTION_DEPTH] transparencies;
+
+	int last_refracted = -1;
+
+	for(int i = 0; i < REFRACTION_DEPTH; i++)
+	{
+		Raytrace_result result = TraceRay(ray);
+
+		last_refracted = i - 1;
+
+		if(!result.intersection)
+		{	break;	}
+
+		self_colors[i] = GetColor(ray);
+		transparencies[i] = materials[result.material_id].transparency;
+
+		//there must be refraction
+
+		ray = Ray(result.contact, ray.direction, ZERO, INFINITY);
+	}
+
+	dvec3 color;
+
+	for(int i = last_refracted; i >= 0; i--)
+	{		
+		color = transparencies[i] * color + (1 - transparencies[i]) * self_colors[i]; 
+	}
+
+	return color;
+}
+
+
 
 void main()
 { 
+	//********************test*********************************************
 	Ray current_ray;
 	current_ray.source = view_point;	
 
@@ -498,5 +538,7 @@ void main()
 	current_ray.direction *= rotation;
 
 
+	//**********************************************************************
+		
 	imageStore(Texture, ivec2(gl_GlobalInvocationID.xy), vec4(GetColor(current_ray), 1));
 }
